@@ -1,0 +1,10 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer components{
+    .inputCX {
+        @apply 
+        border border-black rounded-lg h-[3rem] w-[16rem] pl-4
+    }
+}

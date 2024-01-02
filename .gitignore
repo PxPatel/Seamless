@@ -1,0 +1,19 @@
+# Dependancies
+node_modules
+
+# .gitignore files in any package 
+packages/**/.gitignore
+
+# build files
+packages/**/build
+
+# project details in backend firebase package
+packages/firebase/.firebaserc
+
+# env 
+.env.local
+
+# notUsed Folders
+packages/**/notUsed
+
+packages/**/.plasmo/
