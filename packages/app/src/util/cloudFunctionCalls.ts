@@ -35,7 +35,7 @@ export async function setUserDataInDB(
   url.searchParams.append("payload", JSON.stringify(payload))
 
   try {
-    var fetchResult = await fetch(url)
+    var fetchResult = await fetch(url, { method: "PUT" })
     if (fetchResult.ok) {
       let resultData = await fetchResult.json()
       console.log(resultData)
@@ -58,7 +58,7 @@ export async function getUserDataFromDB(
 
   let rawdataFromDB: Partial<DatabaseMessageQuery> = {}
   try {
-    var fetchResult = await fetch(url)
+    var fetchResult = await fetch(url, { method: "GET" })
     if (fetchResult.ok) {
       rawdataFromDB = await fetchResult.json()
     } else {
@@ -127,7 +127,7 @@ export async function updateUserDataInDB(
   url.searchParams.append("payload", JSON.stringify(payload))
 
   try {
-    var fetchResult = await fetch(url)
+    var fetchResult = await fetch(url, { method: "PUT" })
     if (fetchResult.ok) {
       let resultData = await fetchResult.json()
       console.log(resultData)

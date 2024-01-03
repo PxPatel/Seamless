@@ -17,3 +17,5 @@ packages/firebase/.firebaserc
 packages/**/notUsed
 
 packages/**/.plasmo/
+
+packages/**/test.test.js

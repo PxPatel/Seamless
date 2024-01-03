@@ -21,6 +21,11 @@ const TIMEOUTSECOND = 60;
 exports.setUserData = onRequest(
   { timeoutSeconds: TIMEOUTSECOND },
   async (req, res, next) => {
+    if (req.method !== "PUT") {
+      res.status(405).send("Method Not Allowed");
+      return;
+    }
+
     const idToken = req.query?.idtoken;
     let payload = JSON.parse(req.query.payload ?? "{}");
     try {
@@ -41,7 +46,7 @@ exports.setUserData = onRequest(
         }`,
       });
     } catch (error) {
-      next(error);
+      console.log(error);
     }
   }
 );
@@ -49,6 +54,11 @@ exports.setUserData = onRequest(
 exports.getUserData = onRequest(
   { timeoutSeconds: TIMEOUTSECOND },
   async (req, res) => {
+    if (req.method !== "GET") {
+      res.status(405).send("Method Not Allowed");
+      return;
+    }
+
     const idToken = req.query?.idtoken;
     try {
       const decodedToken = await getAuth().verifyIdToken(idToken);
@@ -74,6 +84,11 @@ exports.getUserData = onRequest(
 exports.updateUserData = onRequest(
   { timeoutSeconds: TIMEOUTSECOND },
   async (req, res, next) => {
+    if (req.method !== "PUT") {
+      res.status(405).send("Method Not Allowed");
+      return;
+    }
+
     const idToken = req.query?.idtoken;
     let payload = JSON.parse(req.query.payload ?? "{}");
     try {

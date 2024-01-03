@@ -4,7 +4,10 @@
   "description": "Seamless Copy-Paste",
   "main": "index.js",
   "scripts": {
-    "dev": "npm run dev --workspaces"
+    "dev:functions": "npm run serve --prefix packages/firebase/functions",
+    "dev:app": "npm run dev --prefix packages/app",
+    "deploy:functions": "npm run deploy --prefix packages/firebase/functions",
+    "build:app": "npm run build --prefix packages/app"
   },
   "author": "Priyansh Patel",
   "license": "ISC",
