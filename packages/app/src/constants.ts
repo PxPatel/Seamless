@@ -20,5 +20,6 @@ export const INITIAL_CONFIG: FullConfigSetting = {
 export const INITIAL_USER_DOCUMENT: DatabaseMessageQuery = {
   ...INITIAL_CONFIG,
   content: "",
-  timeCopied: ""
+  timeCopied: null
 }
+

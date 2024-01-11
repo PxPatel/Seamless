@@ -22,12 +22,20 @@ import {
 //   updateUserDataInDB: (user: User, payload: UpdateDBType) => Promise<void>
 // }
 
+type WriteResult<T> =
+  | {
+      status: "SUCCESS"
+      data: T
+    }
+  | {
+      status: "FAILED"
+      error: any
+    }
+
 export async function setUserDataInDB(
   user: User,
   payload: ExtraDatabaseMessageQuery
-): Promise<
-  { status: boolean } & ({ data: ExtraDatabaseMessageQuery } | { error: Error })
-> {
+): Promise<WriteResult<ExtraDatabaseMessageQuery>> {
   const url = new URL(SET_USER_DATA_API_URL)
 
   const idtoken = await user.getIdToken()
@@ -39,11 +47,11 @@ export async function setUserDataInDB(
     if (fetchResult.ok) {
       let resultData = await fetchResult.json()
       console.log(resultData)
-      return { status: true, data: payload }
+      return { status: "SUCCESS", data: payload }
     }
   } catch (error) {
     console.log(error)
-    return { status: false, error: error }
+    return { status: 'FAILED', error: error }
   }
 }
 
@@ -72,6 +80,49 @@ export async function getUserDataFromDB(
   return fillEmptyFieldsInUserDataToDefault(rawdataFromDB)
 }
 
+
+type UpdateDBType =
+  | {
+      updateField: "MESSAGE"
+      data: ContentType
+    }
+  | {
+      updateField: "TOKEN"
+      action: "UNION" | "REMOVE"
+      data: {
+        tokens: string
+      }
+    }
+  | {
+      updateField: "CONFIG"
+      data: FullConfigSetting
+    }
+
+export async function updateUserDataInDB(
+  user: User,
+  payload: UpdateDBType
+): Promise<WriteResult<UpdateDBType>> {
+  const url = new URL(UPDATE_USER_DATA_API_URL)
+
+  const idtoken = await user.getIdToken()
+  url.searchParams.append("idtoken", idtoken)
+  url.searchParams.append("payload", JSON.stringify(payload))
+
+  try {
+    var fetchResult = await fetch(url, { method: "PUT" })
+    if (fetchResult.ok) {
+      let resultData = await fetchResult.json()
+      console.log(resultData)
+      return { status: "SUCCESS", data: payload }
+    }
+  } catch (error) {
+    console.log(error)
+    return { status: "FAILED", error: error }
+  }
+}
+
+
+
 //const [data, boolean] = get<DatabaseMessaegeQuery>()
 export async function testgetUserDataFromDB<T>(
   user: User
@@ -97,44 +148,4 @@ export async function testgetUserDataFromDB<T>(
   }
 
   return testfillEmptyFieldsInUserDataToDefault<T>(rawdataFromDB)
-}
-
-type UpdateDBType =
-  | {
-      updateField: "MESSAGE"
-      data: ContentType
-    }
-  | {
-      updateField: "TOKEN"
-      action: "UNION" | "REMOVE"
-      data: {
-        tokens: string
-      }
-    }
-  | {
-      updateField: "CONFIG"
-      data: FullConfigSetting
-    }
-
-export async function updateUserDataInDB(
-  user: User,
-  payload: UpdateDBType
-): Promise<{ status: boolean } & ({ data: UpdateDBType } | { error: Error })> {
-  const url = new URL(UPDATE_USER_DATA_API_URL)
-
-  const idtoken = await user.getIdToken()
-  url.searchParams.append("idtoken", idtoken)
-  url.searchParams.append("payload", JSON.stringify(payload))
-
-  try {
-    var fetchResult = await fetch(url, { method: "PUT" })
-    if (fetchResult.ok) {
-      let resultData = await fetchResult.json()
-      console.log(resultData)
-      return { status: true, data: payload }
-    }
-  } catch (error) {
-    console.log(error)
-    return { status: false, error: error }
-  }
 }

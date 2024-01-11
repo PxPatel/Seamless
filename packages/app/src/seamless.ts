@@ -1,79 +1,154 @@
-import { log } from "console"
-
 import { Storage as LStorage } from "@plasmohq/storage"
 
 import {
   handleSignInWithEmailAndPassword,
   handleSignOut
 } from "~lib/AuthContainer/AuthContainer"
-import type { SessionData } from "~types/user.types"
+import { Logic } from "~logic"
+import type { PopupMessage, SessionData, TabMessage } from "~types/user.types"
 
 import {
   onChangeLocalStorageUpdate,
   sendMessageInDirection
 } from "./util/actionUtil"
 
+export type PortName = "popupPort" | "scriptPort" | null
+
 export class Seamless {
-  storage: LStorage = new LStorage({
+  private storage: LStorage = new LStorage({
     area: "sync"
   })
 
-  operation: { data: SessionData }
-  comms: {
+  private operation: { data: SessionData }
+
+  private comms: {
     popupPort: chrome.runtime.Port
-    scriptPort: chrome.runtime.Port
-  } = { popupPort: null, scriptPort: null }
+    scriptPort: {
+      portMap: Map<number, chrome.runtime.Port>
+      headTabsOfEachWindow: Map<number, number>
+    }
+  } = {
+    popupPort: null,
+    scriptPort: {
+      portMap: new Map<number, chrome.runtime.Port>(),
+      headTabsOfEachWindow: new Map<number, number>()
+    }
+  }
 
-  private unsubToPortMessageReceiver: () => void
+  logicInstance: Logic
 
-  private async initializeOperations() {
+  public async initiatePort() {
+    await this.initializeOperationsStore()
+
+    this.logicInstance = new Logic({
+      storage: this.storage,
+      operation: this.operation,
+      comms: this.comms
+    })
+
+    chrome.runtime.onConnect.addListener((port) => {
+      this.assignPortToComms(port).then((portName) => {
+        if (!portName) {
+          return
+        }
+
+        console.log("main Send")
+
+        sendMessageInDirection(this.comms, this.operation.data, portName)
+        port.onMessage.addListener(this.onPortMessage(portName))
+        port.onDisconnect.addListener(this.onPortDisconnect(portName))
+      })
+    })
+  }
+
+  private async initializeOperationsStore() {
     this.operation = {
       data: await this.storage.get<SessionData>("operationData")
     }
   }
 
-  public async initiatePort() {
-    await this.initializeOperations()
-
-    chrome.runtime.onConnect.addListener((port) => {
-      if (port.name === "popupPort") {
-        this.comms.popupPort = port
-        this.expiredUserCheck()
-        sendMessageInDirection(this.comms, this.operation.data, "popupPort")
-      }
-      if (port.name === "scriptPort") {
-        log("Connected to Script", port.sender.tab.id, port.sender.id)
-        this.comms.scriptPort = port
-        sendMessageInDirection(this.comms, this.operation.data, "scriptPort")
-
-        port.onMessage.addListener((msg) => {
-          if (msg.type === "message") {
-            console.log(msg.message)
-          }
-        })
-
-        //Create a map for the ports opened by tabs
-      }
-
-      port.onDisconnect.addListener(onPortDisconnect)
-
-      if (this.comms.popupPort || this.comms.scriptPort) {
-        this.unsubToPortMessageReceiver = this.onMessagePortReceiver()
-      }
-    })
-    
-
-    const onPortDisconnect = (port: chrome.runtime.Port): void => {
-      this.comms[port.name] = null
-      if (
-        !(this.comms.popupPort || this.comms.scriptPort) &&
-        this.unsubToPortMessageReceiver !== undefined
-      ) {
-        this.unsubToPortMessageReceiver()
-      }
+  private async assignPortToComms(
+    port: chrome.runtime.Port
+  ): Promise<PortName> {
+    const portName: PortName = port.sender.tab ? "scriptPort" : "popupPort"
+    if (portName === "popupPort") {
+      this.comms.popupPort = port
+      await this.expiredUserCheck()
     }
+    if (portName === "scriptPort") {
+      if (portName !== port.name) {
+        return null
+      }
+
+      this.comms.scriptPort.portMap.set(port.sender.tab.id, port)
+      await this.assignHeadTabsMap()
+    }
+    return portName
   }
 
+  private onPortDisconnect(portName: PortName) {
+    const popupDisconnect = (port: chrome.runtime.Port) => {
+      this.comms.popupPort = null
+    }
+
+    const tabDisconnect = (port: chrome.runtime.Port) => {
+      this.comms.scriptPort.portMap.delete(port.sender.tab.id)
+      this.comms.scriptPort.headTabsOfEachWindow.delete(port.sender.tab.id)
+      this.assignHeadTabsMap()
+    }
+
+    return portName === "popupPort" ? popupDisconnect : tabDisconnect
+  }
+
+  private async assignHeadTabsMap() {
+    const headTabsofEachWindow = await chrome.tabs.query({ index: 0 })
+    headTabsofEachWindow.forEach((tab) => {
+      this.comms.scriptPort.headTabsOfEachWindow.set(tab.id, tab.windowId)
+    })
+  }
+
+  private onPortMessage(portName: PortName) {
+    const popupMessageSwitchboard = (
+      msg: PopupMessage,
+      port: chrome.runtime.Port
+    ) => {
+      const { type } = msg
+      const { configChangeEvent } = this.logicInstance.popupMessageAction()
+
+      switch (type) {
+        case "ConfigChange":
+          console.log("Config got Modified")
+          break
+        default:
+          break
+      }
+    }
+
+    const tabMessageSwitchboard = (
+      msg: TabMessage,
+      port: chrome.runtime.Port
+    ) => {
+      const { type } = msg
+      const { copyEventAction, pasteRequestAction } =
+        this.logicInstance.tabMessageActions()
+
+      switch (type) {
+        case "CopyEvent":
+          console.log("SL", msg.data.content)
+          copyEventAction(msg)
+          break
+
+        case "PasteRequest":
+          pasteRequestAction({ type: msg.type, port: port })
+        default:
+          break
+      }
+    }
+
+    return portName === "popupPort"
+      ? popupMessageSwitchboard
+      : tabMessageSwitchboard
+  }
   private async expiredUserCheck() {
     console.log(
       "EXP: " + this.operation.data?.exp + "\n" + "NOW: " + Date.now()
@@ -87,26 +162,6 @@ export class Seamless {
         mode: "DELETE"
       })
     }
-  }
-
-  //WORK ON THIS
-  private onMessagePortReceiver() {
-    return () => {}
-    const action = (msg: { task: string; content: string }) => {
-      switch (msg.task) {
-        case "CopyEvent":
-          console.log("Something got Copied")
-          break
-        case "ConfigChange":
-          console.log("Config got Modified")
-          break
-        default:
-          break
-      }
-    }
-
-    this.comms.scriptPort.onMessage.addListener(action)
-    return () => this.comms.scriptPort.onMessage.removeListener(action)
   }
 }
 

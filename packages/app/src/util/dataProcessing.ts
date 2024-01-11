@@ -41,19 +41,61 @@ export function findDifference(
   return [hasDifference, { ...savedValue, ...msg } as SessionData]
 }
 
+function changedFields(before: object, after: object) {
+  const res = []
+
+  if (!before && after) {
+    // If 'before' is undefined but 'after' is defined,
+    // push all fields from 'after' into the result array
+    Object.keys(after).forEach((key) => {
+      res.push(key)
+    })
+  } else if (before && after) {
+    // If both 'before' and 'after' are defined, compare fields
+    Object.keys(after).forEach((key) => {
+      if (
+        !Object.hasOwn(before, key) || // New field in 'after'
+        JSON.stringify(before[key]) !== JSON.stringify(after[key]) // Changed value
+      ) {
+        res.push(key)
+      }
+    })
+
+    // Check for missing fields in 'after'
+    Object.keys(before).forEach((key) => {
+      if (!Object.hasOwn(after, key)) {
+        // Field missing in 'after'
+        res.push(key)
+      }
+    })
+  }
+  return res
+}
+
 export const fillEmptyFieldsInUserDataToDefault = (
-  providedData: Partial<DatabaseMessageQuery>
-): [ExtraDatabaseMessageQuery, boolean] => {
+  providedData: Partial<DatabaseMessageQuery>,
+  removeExtraData?: boolean
+): [ExtraDatabaseMessageQuery | DatabaseMessageQuery, boolean] => {
   if (!providedData) {
     providedData = {}
   }
-  const res: ExtraDatabaseMessageQuery = {
+  let res: ExtraDatabaseMessageQuery = {
     ...INITIAL_USER_DOCUMENT,
     ...providedData
   }
 
   const expectedKeys = Object.keys(INITIAL_USER_DOCUMENT || {})
   const dataKeys = Object.keys(providedData || {})
+
+  //If a key in dataKeys is not there in expectedKeys -> delete key in res
+  if (removeExtraData) {
+    dataKeys.forEach((key) => {
+      if (!expectedKeys.includes(key)) {
+        delete res[key]
+      }
+    })
+  }
+
   const requiredFieldsMissing = expectedKeys.some(
     (key) => !dataKeys.includes(key)
   )
@@ -77,7 +119,9 @@ export const fillEmptyFieldsInUserDataToDefault = (
   //     }
   //   })
 
-  return [res, requiredFieldsMissing]
+  return removeExtraData
+    ? [res as DatabaseMessageQuery, requiredFieldsMissing]
+    : [res as ExtraDatabaseMessageQuery, requiredFieldsMissing]
 }
 
 export const testfillEmptyFieldsInUserDataToDefault = <T>(

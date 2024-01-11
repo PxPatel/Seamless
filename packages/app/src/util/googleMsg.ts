@@ -26,8 +26,6 @@ export class GoogleMSG {
             reject(chrome.runtime.lastError)
           } else {
             this.token = token
-            console.log("In class", this.token)
-
             resolve(this.token)
           }
         }
@@ -66,7 +64,7 @@ export class GoogleMSG {
     const { status: status } = await this.addTokenToUserDocument()
 
     //Turn on listener
-    if (status) {
+    if (status === "SUCCESS") {
       this.actionOnMessage = cb
       chrome.gcm.onMessage.addListener(this.actionOnMessage)
     } else {
@@ -84,7 +82,7 @@ export class GoogleMSG {
     const { status: status } = await this.removeTokenFromUserDocument()
 
     //Turn off listener
-    if (status) {
+    if (status === "SUCCESS") {
       chrome.gcm.onMessage.removeListener(this.actionOnMessage)
     } else {
       return false

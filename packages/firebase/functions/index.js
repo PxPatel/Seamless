@@ -150,9 +150,14 @@ exports.onChangeMessage = onDocumentUpdated("messages/{uid}", async (event) => {
   }
 
   const message = {
-    data: { ...stringifyObject(after) },
-    tokens: [...after.tokens],
+    data: {
+      afterUpdate: JSON.stringify(after),
+      updatedFields: JSON.stringify(updatedFields),
+    },
+    tokens: after.tokens,
   };
+
+  // console.log(message);
 
   try {
     const msgResponse = await getMessaging().sendEachForMulticast(message);
@@ -162,6 +167,17 @@ exports.onChangeMessage = onDocumentUpdated("messages/{uid}", async (event) => {
     console.log("Error sending message:", error);
   }
 });
+
+function stringifyObject(obj) {
+  const stringifiedObj = {};
+  for (const key in obj) {
+    if (Object.prototype.hasOwnProperty.call(obj, key)) {
+      stringifiedObj[key] = JSON.stringify(obj[key]);
+    }
+  }
+
+  return stringifiedObj;
+}
 
 //Changed Fields should find
 //Fields that have been changed ie. not equal
@@ -177,6 +193,7 @@ exports.onChangeMessage = onDocumentUpdated("messages/{uid}", async (event) => {
 //Concerning. Means data has been deleted
 //but document exists ?
 //Test. Not sure if this is possible
+//Maybe just return before object
 
 //SOLVED
 //If both after and before are undefined
@@ -235,14 +252,4 @@ function configureUpdateFields(config) {
   }
 
   return res;
-}
-
-function stringifyObject(obj) {
-  const stringifiedObj = {};
-  for (const key in obj) {
-    if (Object.prototype.hasOwnProperty.call(obj, key)) {
-      stringifiedObj[key] = String(obj[key]);
-    }
-  }
-  return stringifiedObj;
 }

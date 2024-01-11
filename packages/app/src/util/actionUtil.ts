@@ -1,104 +1,129 @@
-import type { Session } from "inspector"
-
 import type { Storage } from "@plasmohq/storage"
 
+import { isPasteResponse } from "~types/guard.types"
 import type {
-  BaseConfigSetting,
-  FullConfigSetting,
+  DatabaseMessageQuery,
+  ExtraDatabaseMessageQuery,
+  PasteResponse,
   SessionData
 } from "~types/user.types"
-import { findDifference } from "~util/dataProcessing"
 
-export function sendMessageBasedOnSender(
-  comms: {
-    popupPort: chrome.runtime.Port
-    scriptPort: chrome.runtime.Port
-  },
-  rawMsg: SessionData,
-  direction?: {}
-) {
-  const sender = comms.popupPort ? comms.popupPort.sender : null
-  let craftedMsg: FullConfigSetting | BaseConfigSetting
-  console.log("Sending MSG: " + JSON.stringify(rawMsg))
+type CommsTypeWithPopup = {
+  popupPort: chrome.runtime.Port
+  scriptPort: {
+    portMap: Map<number, chrome.runtime.Port>
+    headTabsOfEachWindow: Map<number, number>
+  }
+}
 
-  if (!rawMsg) {
-    craftedMsg = null
-  } else if (
-    sender &&
-    sender.url.includes("://hnpdhegmlbdddgidflplnehohipegaah/") &&
-    sender.url.includes("popup.html")
-  ) {
-    craftedMsg = {
-      preferredCopyShortCut: rawMsg.preferredCopyShortCut,
-      preferredPasteShortCut: rawMsg.preferredPasteShortCut,
-      ListenTo: rawMsg.ListenTo,
-      maxConnections: rawMsg.maxConnections,
-      connectionLongevity: rawMsg.connectionLongevity
+export function sendMessageInDirection<T extends CommsTypeWithPopup>(
+  comms: T,
+  rawMsg: SessionData | DatabaseMessageQuery,
+  direction: keyof T
+): void
+
+export function sendMessageInDirection<T extends CommsTypeWithPopup>(
+  comms: T,
+  rawMsg: PasteResponse,
+  direction: chrome.runtime.Port
+): void
+
+export function sendMessageInDirection<T extends CommsTypeWithPopup>(
+  comms: T,
+  rawMsg: any,
+  direction: any
+): void {
+  const { popupPort, scriptPort } = comms
+
+  if (isPasteResponse(rawMsg)) {
+    ;(direction as chrome.runtime.Port).postMessage(rawMsg)
+  } else {
+    switch (direction) {
+      case "popupPort":
+        if (popupPort && isPopupDirectionValid(popupPort)) {
+          const craftedMsg = craftMessageForPopup(rawMsg)
+          popupPort.postMessage(craftedMsg)
+        }
+        break
+
+      case "scriptPort":
+        sendToTabs(scriptPort.portMap, craftMessageForScript(rawMsg))
+        break
+
+      default:
+        break
     }
   }
-  //For Content Script, a new port will be open
-  // else if (sender && isValidURL(sender.url)) {
-  //   craftedMsg = {
-  //     config: {
-  //       preferredCopyShortCut: rawMsg.preferredCopyShortCut,
-  //       preferredPasteShortCut: rawMsg.preferredPasteShortCut,
-  //       ListenTo: rawMsg.ListenTo
-  //     }
-  //   }
-  // }
-  comms.popupPort?.postMessage(craftedMsg)
+}
+function isPopupDirectionValid(popupPort: chrome.runtime.Port) {
+  return (
+    popupPort.sender &&
+    popupPort.sender.url.includes("://hnpdhegmlbdddgidflplnehohipegaah/") &&
+    popupPort.sender.url.includes("popup.html")
+  )
 }
 
-export function sendMessageInDirection<
-  T extends {
-    popupPort: chrome.runtime.Port
-    scriptPort: chrome.runtime.Port
-  } & Record<string, chrome.runtime.Port>
->(comms: T, rawMsg: SessionData, direction: keyof T) {
-  let craftedMsg: any
-  let validDirection: boolean
+function craftMessageForPopup(
+  rawMsg: SessionData | DatabaseMessageQuery | ExtraDatabaseMessageQuery
+) {
+  return !rawMsg
+    ? null
+    : {
+        preferredCopyShortCut: rawMsg.preferredCopyShortCut,
+        preferredPasteShortCut: rawMsg.preferredPasteShortCut,
+        ListenTo: rawMsg.ListenTo,
+        maxConnections: rawMsg.maxConnections,
+        connectionLongevity: rawMsg.connectionLongevity
+      }
+}
 
-  switch (direction) {
-    case "popupPort":
-      craftedMsg = !rawMsg
-        ? null
-        : {
-            preferredCopyShortCut: rawMsg.preferredCopyShortCut,
-            preferredPasteShortCut: rawMsg.preferredPasteShortCut,
-            ListenTo: rawMsg.ListenTo,
-            maxConnections: rawMsg.maxConnections,
-            connectionLongevity: rawMsg.connectionLongevity
-          }
+function craftMessageForScript(
+  rawMsg: SessionData | DatabaseMessageQuery | ExtraDatabaseMessageQuery
+) {
+  return !rawMsg
+    ? null
+    : {
+        preferredCopyShortCut: rawMsg.preferredCopyShortCut,
+        preferredPasteShortCut: rawMsg.preferredPasteShortCut,
+        ListenTo: rawMsg.ListenTo
+      }
+}
 
-      validDirection = comms.popupPort?.sender
-        ? comms.popupPort.sender.url.includes(
-            "://hnpdhegmlbdddgidflplnehohipegaah/"
-          ) && comms.popupPort.sender.url.includes("popup.html")
-        : false
-      validDirection && comms.popupPort?.postMessage(craftedMsg)
-      break
-
-    case "scriptPort":
-      craftedMsg = !rawMsg
-        ? null
-        : {
-            preferredCopyShortCut: rawMsg.preferredCopyShortCut,
-            preferredPasteShortCut: rawMsg.preferredPasteShortCut,
-            ListenTo: rawMsg.ListenTo
-          }
-
-      validDirection = comms.scriptPort?.sender.tab ? true : false
-
-      console.log(validDirection, "sending 2")
-      validDirection && comms.scriptPort?.postMessage(craftedMsg)
-      break
-
-    default:
-      break
+function sendToTabs(
+  portMap: Map<number, chrome.runtime.Port>,
+  craftedMsg: any
+) {
+  console.log("Sending to Tabs")
+  if (portMap.size > 0) {
+    for (const port of portMap.values()) {
+      console.log("Sending to", port.sender.tab.id)
+      port.postMessage(craftedMsg)
+    }
   }
 }
 
-type actionParamType =
+// const testBool = true
+// if (!testBool && rawMsg.ListenTo === "CLIPBOARD") {
+//   const headTabsOfEachWindow = [
+//     ...comms.scriptPort.headTabsOfEachWindow.keys()
+//   ]
+
+//   for (const port of portMap.values()) {
+//     console.log("Sending to 1", port.sender.tab.id)
+//     if (headTabsOfEachWindow.includes(port.sender.tab.id)) {
+//       port.postMessage(craftedMsg)
+//     } else {
+//       port.postMessage(null)
+//     }
+//   }
+// } else if (testBool) {
+//   for (const port of portMap.values()) {
+//     console.log("Sending to", port.sender.tab.id)
+//     port.postMessage(craftedMsg)
+//   }
+// }
+
+export type actionParamType =
   | {
       operation: { data: SessionData }
       storage: Storage
@@ -111,7 +136,9 @@ type actionParamType =
       mode: "DELETE"
     }
 
-export async function onChangeLocalStorageUpdate(params: actionParamType) {
+export async function onChangeLocalStorageUpdate(
+  params: actionParamType
+): Promise<boolean> {
   const { operation, storage, mode } = params
 
   try {
@@ -126,30 +153,13 @@ export async function onChangeLocalStorageUpdate(params: actionParamType) {
         const data = await storage.get("operationData")
         console.log("Deleted LS: " + JSON.stringify(data))
         break
-      // case "UPDATE":
-      //   let [hasDifference, updatedMsg] = findDifference(operation, params.msg)
-      //   if (hasDifference) {
-      //     res = updatedMsg
-      //     await storage.setItem("operationData", JSON.stringify(updatedMsg))
-      //   }
-      //   break
       default:
         break
     }
   } catch (error) {
     console.log(error)
+    return false
   }
-}
-//CopyEvent msg from Content
-/**
- * Save data to LocalStorage
- * Send data to FB Firestore
- *  --> Handle error with a revert to previous state
- */
 
-//ConfigChange msg from Popup
-/**
- * Send data to LocalStorage
- * Send data to FB Firestore
- *  --> Handle error with a revert to previous state
- */
+  return true
+}

@@ -51,6 +51,6 @@
       "gcm",
       "scripting"
     ],
-    "key": "$CRX_KEY"
+    "key": "$CRX_PUBLIC_KEY"
   }
 }
