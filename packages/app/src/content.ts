@@ -1,12 +1,16 @@
 import { isPasteResponse } from "~types/guard.types"
-import type { BaseConfigSetting, PasteResponse } from "~types/user.types"
+import type {
+  BaseConfigSetting,
+  PasteResponse,
+  TabMessage
+} from "~types/user.types"
 
 const port = chrome.runtime.connect({ name: "scriptPort" })
 
-const CLIPBOARD_POLLING_TIME_MS: number = 100
+const CLIPBOARD_POLLING_TIME_MS: number = 2500 //5 seconds for my sanity and ability to keep up the logs
 
 //Only for testing purposes
-const devVar_useDefaultShortcuts = false
+const devVar_useDefaultShortcuts = false //False means use default
 const defaultPreferredCopyShortcut = ["Control", "Shift", "Alt", "C"]
 const defaultPreferredPasteShortcut = ["Control", "Shift", "Alt", "V"]
 
@@ -17,25 +21,12 @@ let prevListenTo: "CLIPBOARD" | "SHORTCUT" | "STOP"
 
 const pressedKeys = []
 
-const transmitCopyEvent = (selectedText: string) => {
-  port.postMessage({
-    type: "CopyEvent",
-    data: { content: selectedText, timeCopied: Date.now() }
-  })
-}
-
-const transmitPasteEvent = () => {
-  port.postMessage({
-    type: "PasteRequest",
-    port: null
-  })
-}
 // Listen for incoming messages on the port
 port.onMessage.addListener(
   (message: BaseConfigSetting | PasteResponse | null) => {
     if (isPasteResponse(message)) {
       if (config && config.ListenTo === "CLIPBOARD") {
-        // writeToClipboard(message.content)
+        immediateWriteToClipboard(message.content)
       } else if (config && config.ListenTo === "SHORTCUT") {
         pastingMechanism(message.content)
       }
@@ -49,6 +40,8 @@ port.onMessage.addListener(
 
     if (!config || config.ListenTo === "STOP") {
       clearAllListeners()
+      
+      port.postMessage({ type: ""})
     } else if (config.ListenTo !== prevListenTo) {
       if (config.ListenTo === "SHORTCUT") {
         clearAllListeners()
@@ -58,31 +51,45 @@ port.onMessage.addListener(
       } else if (config.ListenTo === "CLIPBOARD") {
         clearAllListeners()
 
-        intervalID = setInterval(async () => {
-          try {
-            const clipboardText = await navigator.clipboard.readText()
-            transmitCopyEvent(clipboardText)
-          } catch (error) {
-            console.log(error)
-          }
-        }, CLIPBOARD_POLLING_TIME_MS)
+        intervalID = initiateClipboardListener()
+        console.log(Boolean(intervalID))
       }
     }
   }
 )
 
-function focusChangeKeyListener() {
-  pressedKeys.length = 0
-}
-
 function clearAllListeners() {
   if (intervalID) {
     clearInterval(intervalID)
+
     intervalID = null
   }
   document.removeEventListener("keydown", keyDownListener)
   document.removeEventListener("keyup", keyUpListener)
   window.removeEventListener("blur", focusChangeKeyListener)
+}
+
+async function immediateWriteToClipboard(message: string) {
+  await navigator.clipboard.writeText(message)
+}
+
+function initiateClipboardListener() {
+  console.log("Hit")
+  let intervalID = setInterval(async () => {
+    try {
+      console.log("Scanning")
+      const clipboardText = await navigator.clipboard.readText()
+      transmitCopyEvent(clipboardText)
+    } catch (error) {
+      console.log(error)
+    }
+  }, CLIPBOARD_POLLING_TIME_MS)
+
+  return intervalID
+}
+
+function focusChangeKeyListener() {
+  pressedKeys.length = 0
 }
 
 async function keyDownListener(event: { key: string }) {
@@ -170,6 +177,30 @@ function determineShortcutArray() {
   return { copyShortcut, pasteShortcut }
 }
 
+const transmitCopyEvent = (selectedText: string) => {
+  port.postMessage({
+    type: "CopyEvent",
+    data: { content: selectedText, timeCopied: Date.now() }
+  })
+}
+
+const transmitPasteEvent = () => {
+  const activeElement = document.activeElement as HTMLElement
+  if (
+    !(
+      activeElement instanceof HTMLInputElement ||
+      activeElement instanceof HTMLTextAreaElement ||
+      activeElement.isContentEditable
+    )
+  ) {
+    return
+  }
+  port.postMessage({
+    type: "PasteRequest",
+    port: null
+  })
+}
+
 function pastingMechanism(content: string, auto?: boolean) {
   const activeElement = document.activeElement as HTMLElement
 
@@ -205,20 +236,7 @@ function pastingMechanism(content: string, auto?: boolean) {
     range.insertNode(document.createTextNode(content))
   } else if (!activeElement.isContentEditable) {
     // Handle other types of elements here
-    const selection = window.getSelection()
-    if (selection.type !== "None") {
-      const range = selection.getRangeAt(0)
-      const selectedText = selection.toString()
-
-      if (selectedText && activeElement.textContent) {
-        const modifiedText =
-          activeElement.textContent.slice(0, range.startOffset) +
-          content +
-          activeElement.textContent.slice(range.endOffset)
-
-        activeElement.textContent = modifiedText
-      }
-    }
+    console.log("Not a editable content")
   }
 
   /**
@@ -227,7 +245,3 @@ function pastingMechanism(content: string, auto?: boolean) {
    * Similar to typing, if a text is highlighted, replace the selection with the content
    */
 }
-
-//Message comes from Logic
-//Message gets saved in Clipboard
-//

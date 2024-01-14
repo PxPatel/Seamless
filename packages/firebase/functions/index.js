@@ -135,17 +135,9 @@ exports.onChangeMessage = onDocumentUpdated("messages/{uid}", async (event) => {
   const updatedFields = changedFields(before, after);
   console.log("Updated Fields", updatedFields);
 
-  if (updatedFields.length === 0 || updatedFields.includes("token")) {
+  if (updatedFields.length === 0 || updatedFields.includes("tokens")) {
     return;
-  } else if (
-    !(updatedFields.includes("content") || updatedFields.includes("timeCopied"))
-  ) {
-    //In case it is smt else
-    //Change condition as you go along
-  } else if (
-    updatedFields.includes("content") ||
-    updatedFields.includes("timeCopied")
-  ) {
+  } else if (updatedFields.includes("content")) {
     //pass
   }
 

@@ -36,7 +36,7 @@ export class Logic {
     popupPort: chrome.runtime.Port
     scriptPort: {
       portMap: Map<number, chrome.runtime.Port>
-      headTabsOfEachWindow: Map<number, number>
+      activeTabID: number
     }
   }
 
@@ -111,7 +111,7 @@ export class Logic {
         return unstringifiedObj as GoogleMessageData
       }
 
-      const handleContentUpdate = (
+      const updateCachedContent = (
         revertedMessage: GoogleMessageData
       ): void => {
         const updatedFields = revertedMessage.updatedFields
@@ -127,25 +127,19 @@ export class Logic {
         }
       }
 
-      const handleOperationsUpdate = async (
-        revertedMessage: GoogleMessageData
+      const updateOperationsAndServices = async (
+        updatedFields: (keyof DatabaseMessageQuery)[],
+        afterUpdate: DatabaseMessageQuery | ExtraDatabaseMessageQuery
       ): Promise<void> => {
-        const updatedFields = revertedMessage.updatedFields
+        const selectedFields = [
+          "ListenTo",
+          "preferredCopyShortCut",
+          "preferredPasteShortCut",
+          "connectionLongevity",
+          "maxConnections"
+        ]
 
-        if (
-          updatedFields.some((field) =>
-            [
-              "ListenTo",
-              "preferredCopyShortCut",
-              "preferredPasteShortCut",
-              "connectionLongevity"
-            ].includes(field)
-          )
-        ) {
-          const [afterUpdate] = fillEmptyFieldsInUserDataToDefault(
-            revertedMessage.afterUpdate,
-            true
-          )
+        if (updatedFields.some((field) => selectedFields.includes(field))) {
           const newOperationsData: SessionData = await compileOperationsData(
             this.user,
             afterUpdate
@@ -169,6 +163,23 @@ export class Logic {
               afterUpdate as DatabaseMessageQuery,
               "popupPort"
             )
+
+            if (this.operation.data.ListenTo === "CLIPBOARD") {
+              const pasteResponse: PasteResponse = {
+                type: "PasteResponse",
+                content: this.contentHolder.content
+              }
+
+              const singularHeadPort = this.comms.scriptPort.portMap.get(
+                this.comms.scriptPort.activeTabID
+              )
+
+              sendMessageInDirection(
+                this.comms,
+                pasteResponse,
+                singularHeadPort
+              )
+            }
           }
         }
 
@@ -178,8 +189,25 @@ export class Logic {
       const messageData = incomingMessage.data as RawGoogleMessageData
       const revertedMessage = revertStringifyObject(messageData)
 
-      handleContentUpdate(revertedMessage)
-      await handleOperationsUpdate(revertedMessage)
+      const [afterUpdate, needsFilling] = fillEmptyFieldsInUserDataToDefault(
+        revertedMessage.afterUpdate,
+        true
+      )
+
+      if (needsFilling) {
+        console.log("Need for Setting")
+        await updateUserDataInDB(this.user, {
+          updateField: "FULL_DOCUMENT",
+          data: afterUpdate
+        })
+        return
+      }
+
+      updateCachedContent(revertedMessage)
+      await updateOperationsAndServices(
+        revertedMessage.updatedFields,
+        afterUpdate
+      )
 
       console.log("Message", revertedMessage)
     }

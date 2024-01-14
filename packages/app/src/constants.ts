@@ -22,4 +22,3 @@ export const INITIAL_USER_DOCUMENT: DatabaseMessageQuery = {
   content: "",
   timeCopied: null
 }
-

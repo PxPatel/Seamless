@@ -25,13 +25,13 @@ export class Seamless {
     popupPort: chrome.runtime.Port
     scriptPort: {
       portMap: Map<number, chrome.runtime.Port>
-      headTabsOfEachWindow: Map<number, number>
+      activeTabID: number
     }
   } = {
     popupPort: null,
     scriptPort: {
       portMap: new Map<number, chrome.runtime.Port>(),
-      headTabsOfEachWindow: new Map<number, number>()
+      activeTabID: null
     }
   }
 
@@ -47,6 +47,7 @@ export class Seamless {
     })
 
     chrome.runtime.onConnect.addListener((port) => {
+      console.log("trigger happy, before main send")
       this.assignPortToComms(port).then((portName) => {
         if (!portName) {
           return
@@ -57,7 +58,21 @@ export class Seamless {
         sendMessageInDirection(this.comms, this.operation.data, portName)
         port.onMessage.addListener(this.onPortMessage(portName))
         port.onDisconnect.addListener(this.onPortDisconnect(portName))
+        this.initalizeTabPositionCalibration()
       })
+    })
+  }
+
+  private async initalizeTabPositionCalibration() {
+    chrome.tabs.onActivated.addListener(async (activeInfo) => {
+      const tabId = activeInfo.tabId
+      const windowId = activeInfo.windowId
+
+      // The tab with tabId was moved
+      console.log(
+        `Active tab changed. Tab ID: ${tabId}, Window ID: ${windowId}`
+      )
+      await this.assignHeadTabsMap({ recall: true, tabId })
     })
   }
 
@@ -81,6 +96,9 @@ export class Seamless {
       }
 
       this.comms.scriptPort.portMap.set(port.sender.tab.id, port)
+      console.log("Checking map from main:", [
+        ...this.comms.scriptPort.portMap.values()
+      ])
       await this.assignHeadTabsMap()
     }
     return portName
@@ -91,20 +109,29 @@ export class Seamless {
       this.comms.popupPort = null
     }
 
-    const tabDisconnect = (port: chrome.runtime.Port) => {
+    const tabDisconnect = async (port: chrome.runtime.Port) => {
       this.comms.scriptPort.portMap.delete(port.sender.tab.id)
-      this.comms.scriptPort.headTabsOfEachWindow.delete(port.sender.tab.id)
-      this.assignHeadTabsMap()
     }
 
     return portName === "popupPort" ? popupDisconnect : tabDisconnect
   }
 
-  private async assignHeadTabsMap() {
-    const headTabsofEachWindow = await chrome.tabs.query({ index: 0 })
-    headTabsofEachWindow.forEach((tab) => {
-      this.comms.scriptPort.headTabsOfEachWindow.set(tab.id, tab.windowId)
+  private async assignHeadTabsMap(options?: {
+    recall?: boolean
+    tabId?: number
+  }) {
+    const activeTabs = await chrome.tabs.query({
+      active: true,
+      currentWindow: true
     })
+    console.log(activeTabs)
+
+    this.comms.scriptPort.activeTabID =
+      activeTabs.length > 0 ? activeTabs.at(0).id : null
+
+    if (options?.recall) {
+      sendMessageInDirection(this.comms, this.operation.data, "scriptPort")
+    }
   }
 
   private onPortMessage(portName: PortName) {
@@ -149,6 +176,7 @@ export class Seamless {
       ? popupMessageSwitchboard
       : tabMessageSwitchboard
   }
+
   private async expiredUserCheck() {
     console.log(
       "EXP: " + this.operation.data?.exp + "\n" + "NOW: " + Date.now()

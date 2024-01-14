@@ -51,7 +51,7 @@ export async function setUserDataInDB(
     }
   } catch (error) {
     console.log(error)
-    return { status: 'FAILED', error: error }
+    return { status: "FAILED", error: error }
   }
 }
 
@@ -80,7 +80,6 @@ export async function getUserDataFromDB(
   return fillEmptyFieldsInUserDataToDefault(rawdataFromDB)
 }
 
-
 type UpdateDBType =
   | {
       updateField: "MESSAGE"
@@ -96,6 +95,10 @@ type UpdateDBType =
   | {
       updateField: "CONFIG"
       data: FullConfigSetting
+    }
+  | {
+      updateField: "FULL_DOCUMENT"
+      data: DatabaseMessageQuery | ExtraDatabaseMessageQuery
     }
 
 export async function updateUserDataInDB(
@@ -120,8 +123,6 @@ export async function updateUserDataInDB(
     return { status: "FAILED", error: error }
   }
 }
-
-
 
 //const [data, boolean] = get<DatabaseMessaegeQuery>()
 export async function testgetUserDataFromDB<T>(

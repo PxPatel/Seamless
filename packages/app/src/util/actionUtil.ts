@@ -2,6 +2,7 @@ import type { Storage } from "@plasmohq/storage"
 
 import { isPasteResponse } from "~types/guard.types"
 import type {
+  BaseConfigSetting,
   DatabaseMessageQuery,
   ExtraDatabaseMessageQuery,
   PasteResponse,
@@ -12,7 +13,7 @@ type CommsTypeWithPopup = {
   popupPort: chrome.runtime.Port
   scriptPort: {
     portMap: Map<number, chrome.runtime.Port>
-    headTabsOfEachWindow: Map<number, number>
+    activeTabID: number
   }
 }
 
@@ -47,7 +48,7 @@ export function sendMessageInDirection<T extends CommsTypeWithPopup>(
         break
 
       case "scriptPort":
-        sendToTabs(scriptPort.portMap, craftMessageForScript(rawMsg))
+        sendToTabs(scriptPort, craftMessageForScript(rawMsg))
         break
 
       default:
@@ -79,7 +80,7 @@ function craftMessageForPopup(
 
 function craftMessageForScript(
   rawMsg: SessionData | DatabaseMessageQuery | ExtraDatabaseMessageQuery
-) {
+): BaseConfigSetting {
   return !rawMsg
     ? null
     : {
@@ -90,38 +91,39 @@ function craftMessageForScript(
 }
 
 function sendToTabs(
-  portMap: Map<number, chrome.runtime.Port>,
-  craftedMsg: any
+  scriptPort: {
+    portMap: Map<number, chrome.runtime.Port>
+    activeTabID: number
+  },
+  craftedMsg: BaseConfigSetting
 ) {
   console.log("Sending to Tabs")
-  if (portMap.size > 0) {
-    for (const port of portMap.values()) {
-      console.log("Sending to", port.sender.tab.id)
-      port.postMessage(craftedMsg)
+  if (scriptPort.portMap.size > 0 && scriptPort.activeTabID) {
+    if (craftedMsg.ListenTo === "CLIPBOARD") {
+      console.log("HeadTab:", scriptPort.activeTabID)
+      console.log("All tabsid: ", [...scriptPort.portMap.values()])
+      for (const port of scriptPort.portMap.values()) {
+        if (scriptPort.activeTabID === port.sender.tab.id) {
+          port.postMessage(craftedMsg)
+        } else {
+          port.postMessage({
+            ...craftedMsg,
+            ListenTo: "STOP"
+          } as BaseConfigSetting)
+        }
+      }
+    } else {
+      for (const port of scriptPort.portMap.values()) {
+        console.log("Normally Sending to", port.sender.tab.id)
+        port.postMessage(craftedMsg)
+      }
     }
   }
 }
 
-// const testBool = true
-// if (!testBool && rawMsg.ListenTo === "CLIPBOARD") {
-//   const headTabsOfEachWindow = [
-//     ...comms.scriptPort.headTabsOfEachWindow.keys()
-//   ]
-
-//   for (const port of portMap.values()) {
-//     console.log("Sending to 1", port.sender.tab.id)
-//     if (headTabsOfEachWindow.includes(port.sender.tab.id)) {
-//       port.postMessage(craftedMsg)
-//     } else {
-//       port.postMessage(null)
-//     }
-//   }
-// } else if (testBool) {
-//   for (const port of portMap.values()) {
-//     console.log("Sending to", port.sender.tab.id)
-//     port.postMessage(craftedMsg)
-//   }
-// }
+//When sending PasteRespones: Send it to the certain Port, orrrr send it to one Tab
+//The one Tab, will add it to clipboard and the pasting can happen itself
+//One tab should be the head tab in the map.
 
 export type actionParamType =
   | {
