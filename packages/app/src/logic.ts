@@ -125,6 +125,20 @@ export class Logic {
             timeCopied: revertedMessage.afterUpdate.timeCopied
           }
         }
+
+        if (this.operation.data.ListenTo === "CLIPBOARD") {
+          console.log("NEW CLIPPY WRITE STARTED")
+          const pasteResponse: PasteResponse = {
+            type: "PasteResponse",
+            content: this.contentHolder.content
+          }
+
+          const singularHeadPort = this.comms.scriptPort.portMap.get(
+            this.comms.scriptPort.activeTabID
+          )
+
+          sendMessageInDirection(this.comms, pasteResponse, singularHeadPort)
+        }
       }
 
       const updateOperationsAndServices = async (
@@ -163,23 +177,6 @@ export class Logic {
               afterUpdate as DatabaseMessageQuery,
               "popupPort"
             )
-
-            if (this.operation.data.ListenTo === "CLIPBOARD") {
-              const pasteResponse: PasteResponse = {
-                type: "PasteResponse",
-                content: this.contentHolder.content
-              }
-
-              const singularHeadPort = this.comms.scriptPort.portMap.get(
-                this.comms.scriptPort.activeTabID
-              )
-
-              sendMessageInDirection(
-                this.comms,
-                pasteResponse,
-                singularHeadPort
-              )
-            }
           }
         }
 

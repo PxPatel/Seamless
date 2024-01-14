@@ -135,7 +135,11 @@ exports.onChangeMessage = onDocumentUpdated("messages/{uid}", async (event) => {
   const updatedFields = changedFields(before, after);
   console.log("Updated Fields", updatedFields);
 
-  if (updatedFields.length === 0 || updatedFields.includes("tokens")) {
+  if (
+    updatedFields.length === 0 ||
+    updatedFields.includes("tokens") ||
+    updatedFields.includes("timeCopied")
+  ) {
     return;
   } else if (updatedFields.includes("content")) {
     //pass
